@@ -1,2 +1,2 @@
-# ags-pipeline
-snakemake-implemented version of Andrea's analysis pipeline
+# Analysis Pipelines
+Snakemake-implemented pipelines
