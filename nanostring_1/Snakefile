@@ -1,0 +1,169 @@
+"""Snakemake file."""
+
+# See tutorial at: http://tiny.cc/snakemake_tutorial
+
+from snakemake.utils import R
+
+from python_functions import make_traits_df
+
+
+############ BEGIN CONFIGURATION ############
+
+#### BASE OUTPUT DIRECTORY ####
+
+OUT_DIR = "/home/gus/MEGAsync/zim/main/BCH/Projects/James/Nanostring_pipeline/OKT3/OKT3_pipeline_output"
+
+#### GENERATE_COMPARISONS_FOR_NANOSTRINGNORM ####
+
+COMPARISON_MATRIX_IN = "/home/gus/MEGAsync/zim/main/BCH/Projects/James/Nanostring_pipeline/OKT3/data/OKT3_annotation.xls"
+COMPARISON_MATRIX_NANOSTRINGNORM = OUT_DIR+"/OKT3_annotation_for_nanostringnorm.csv"
+COMPARISON_MATRIX_EDGER = OUT_DIR+"/OKT3_annotation_for_edger.csv"
+
+EXTRA_COMPARISONS = None
+
+# EXTRA_COMPARISONS = [['Sample_Type_Treg','Sample_Type_Tcon'],
+#                      ['Sample_Type_CD14','Sample_Type_Tcon'],
+#                      ['Sample_Type_CD14','Sample_Type_Treg'],]
+
+
+
+
+#### RUN_NANOSTRINGNORM ####
+
+RCC_DIRECTORY = "/home/gus/MEGAsync/zim/main/BCH/Projects/James/Nanostring_pipeline/OKT3/data/OKT3 study/links_to_all_files"
+PDF = OUT_DIR+"/NanoStringNorm/normalization_and_QC_report.pdf"
+NORM_CSV = OUT_DIR+"/NanoStringNorm/data.norm.csv"
+NORM_CSV_PLUS_1 = OUT_DIR+"/NanoStringNorm/data.norm.plus1.csv"
+
+#### RUN_EDGER ####
+
+
+
+############ END CONFIGURATION ############
+
+
+
+
+
+
+
+############ BEGIN PIPELINE RULES ############
+
+rule generate_comparisons_for_nanostringnorm:
+    input:
+        xls=COMPARISON_MATRIX_IN
+
+    output:
+        traits=COMPARISON_MATRIX_NANOSTRINGNORM,
+        anno=COMPARISON_MATRIX_EDGER
+
+    run:
+        traits_df,anno_df = make_traits_df(input.xls, EXTRA_COMPARISONS)
+
+        traits_df.to_csv(output.traits, sep=',', index=False)
+
+        anno_df.index = anno_df.File_Name.values
+        anno_df = anno_df.drop('File_Name', axis=1)
+        anno_df.to_csv(output.anno, sep=',', index=True)
+
+
+# ------------------------- #
+
+rule run_nanostringnorm:
+    input:
+        rcc_directory=RCC_DIRECTORY,
+        traits_table=rules.generate_comparisons_for_nanostringnorm.output.traits
+
+    output:
+        pdf=PDF,
+        norm_csv=NORM_CSV,
+        norm_csv_plus_1=NORM_CSV_PLUS_1,
+
+    run:
+        R("""
+        require('NanoStringNorm');
+
+        # directly import the nCounter output
+        data.raw <- read.markup.RCC(rcc.path="{input.rcc_directory}")
+
+        # import traits df
+        traits.df <- read.table("{input.traits_table}",
+            sep=',',
+            row.names=1,
+            check.names=TRUE,
+            header = TRUE);
+
+        # sort the sample names to match the data file
+        traits.df.sorted <- traits.df[order(rownames(traits.df)),]
+
+        data.mrna <- data.raw$x
+
+
+        data.mrna.anno <- data.mrna[,c(1:3)];
+        data.mrna.data <- data.mrna[,-c(1:3)];
+
+        # sort column names to match traits row names
+        data.mrna.data <- data.mrna.data[,order(colnames(data.mrna.data))]
+
+        # round.values and take.log as TRUE to facilitate plotting report correctly
+        data.norm.for.plot <- NanoStringNorm(
+            x=data.mrna.data,
+            anno=data.mrna.anno,
+            CodeCount='geo.mean',
+            Background='mean.2sd',
+            SampleContent='housekeeping.geo.mean',
+            round.values=TRUE,
+            take.log=TRUE,
+            traits = traits.df.sorted
+            );
+
+
+        # plot all the plots as PDF report
+        pdf("{output.pdf}");
+        Plot.NanoStringNorm(
+            x = data.norm.for.plot,
+            label.best.guess = TRUE,
+            plot.type = 'all'
+            );
+
+        dev.off();
+
+        # round.values and take.log as FALSE to report "unprocessed" count values for downstream analysis
+        data.norm <- NanoStringNorm(
+            x=data.mrna.data,
+            anno=data.mrna.anno,
+            CodeCount='geo.mean',
+            Background='mean.2sd',
+            SampleContent='housekeeping.geo.mean',
+            round.values=FALSE,
+            take.log=FALSE,
+            traits = traits.df.sorted
+            );
+
+        # add a psuedocount of one to all count values
+        data.norm.anno <- data.norm$normalized.data[,c(1:3)]
+        data.norm.data <- data.norm$normalized.data[,-c(1:3)]
+
+        # data.norm.df <- cbind(data.norm.anno,data.norm.data)
+        # data.norm.df.plus1 <- cbind(data.norm.anno,data.norm.data+1)
+
+        data.norm.df <- data.norm.data
+        data.norm.df.plus1 <- data.norm.data+1
+
+        # write normalized count data to csv and after adding psuedocount of one
+        write.csv(x = data.norm.df, file = "{output.norm_csv}")
+        write.csv(x = data.norm.df.plus1, file = "{output.norm_csv_plus_1}")
+
+        """)
+
+# ------------------------- #
+
+# rule
+
+
+# ------------------------- #
+
+rule all:
+    input:
+        rules.generate_comparisons_for_nanostringnorm.output,
+        rules.run_nanostringnorm.output,

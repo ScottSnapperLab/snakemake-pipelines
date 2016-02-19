@@ -1,0 +1,17 @@
+# This file may be used to create an environment using:
+# $ conda create --name nanostring_pipeline -c bioconda --file <this file>
+
+# REQUIRED: DO NOT CHANGE
+python>=3.4.3
+graphviz>=2.38.0
+snakemake
+
+# Packages specific to your pipeline
+ipython
+r-locfit
+r-nanostringnorm
+bioconductor-limma
+bioconductor-edger
+pandas
+xlrd
+rpy2
