@@ -15,12 +15,12 @@ combo <- factor(paste(targets$Sample_Type,targets$Week,sep="."))
 targets <- cbind(targets,Combo=combo)
 
 # create the DEGList object
-group <- factor(targets$Sample_Type)
+group <- factor(targets$Combo)
 y <- DGEList(counts=x,group=group)
 
 
 # Generate design matrix
-design <- model.matrix(~0+Week + Sample_Type, data=targets)
+design <- model.matrix(~0+Combo, data=targets)
 
 
 # Estimate dispersion and plot useful figures
@@ -33,10 +33,10 @@ plotMDS(y)
 fit <- glmFit(y, design)
 
 # Generate contrasts
-CD14.v.Tcon <- makeContrasts(w3Week3-Week1, levels=design)
+contr <- makeContrasts(ComboCD14.0-ComboCD14.5, levels=design)
 
 
 # Do likelihood ratio tests
-lrt.CD14.v.Tcon <- glmLRT(fit, contrast=CD14.v.Tcon)
+lrt.contr <- glmLRT(fit, contrast=contr)
 
-topTags(lrt.CD14.v.Tcon)
+topTags(lrt.contr)
